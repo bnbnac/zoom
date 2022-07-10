@@ -1,5 +1,5 @@
 import express from "express";
-import { Server } from "socket.io";
+import SocketIO from "socket.io";
 import http from "http";
 
 const app = express();
@@ -11,80 +11,23 @@ app.get("/", (req, res) => res.render("home"));
 app.get("/*", (req, res) => res.redirect("/"));
 
 const server = http.createServer(app);
-const io = new Server(server);
-
-function publicRooms() {
-  const {
-    sockets: {
-      adapter: { sids, rooms },
-    },
-  } = io;
-  const publicRooms = [];
-  rooms.forEach((_, key) => {
-    if (sids.get(key) === undefined) {
-      publicRooms.push(key);
-    }
-  });
-  return publicRooms;
-}
-
-function countRooms(roomName) {
-  return io.sockets.adapter.rooms.get(roomName)?.size;
-}
+const io = SocketIO(server);
+const handleListen = () => console.log(`Listening on http://localhost:3000`);
 
 io.on("connection", (socket) => {
-  socket["nickname"] = "Anon";
-  socket.onAny((event) => {
-    console.log(`socket event: ${event}`);
-  });
-  io.sockets.emit("room_change", publicRooms());
-  socket.on("nickname", (nickname) => (socket["nickname"] = nickname));
-  socket.on("enter_room", (roomName, done) => {
+  socket.on("join_room", (roomName) => {
     socket.join(roomName);
-    done(countRooms(roomName));
-    socket.to(roomName).emit("welcome", socket.nickname, countRooms(roomName));
-    io.sockets.emit("room_change", publicRooms());
+    socket.to(roomName).emit("welcome");
   });
-  socket.on("disconnecting", () => {
-    socket.rooms.forEach((room) =>
-      socket.to(room).emit("bye", socket.nickname, countRooms(room) - 1)
-    );
+  socket.on("offer", (offer, roomName) => {
+    socket.to(roomName).emit("offer", offer);
   });
-  socket.on("disconnect", () => {
-    io.sockets.emit("room_change", publicRooms());
+  socket.on("answer", (answer, roomName) => {
+    socket.to(roomName).emit("answer", answer);
   });
-  socket.on("new_message", (msg, roomName, done) => {
-    socket.to(roomName).emit("new_message", `${socket.nickname}: ${msg}`);
-    done();
+  socket.on("ice", (ice, roomName) => {
+    socket.to(roomName).emit("ice", ice);
   });
 });
-
-// const sockets = [];
-
-// wss.on("connection", (socket) => {
-//   sockets.push(socket);
-//   socket["nickname"] = "anon";
-//   console.log("connected to browser");
-
-//   socket.on("close", () => {
-//     console.log("disconnected from the browser");
-//   });
-
-//   socket.on("message", (msg) => {
-//     const message = JSON.parse(msg);
-//     switch (message.type) {
-//       case "new_message":
-//         sockets.forEach((aSocket) =>
-//           aSocket.send(`${socket.nickname}: ${message.payload}`)
-//         );
-//         break;
-//       case "nickname":
-//         socket["nickname"] = message.payload;
-//         break;
-//     }
-//   });
-// });
-
-const handleListen = () => console.log(`Listening on http://localhost:3000`);
 
 server.listen(3000, handleListen);
